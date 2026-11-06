@@ -1,0 +1,55 @@
+# AQUA-STRAT - automatic daily forecast
+# Every morning at 06:00 IST this job downloads the latest Copernicus ocean physics, runs the trained LSTM
+# (no retraining), verifies it against the trained output and commits the new data/lstm.js.
+# Vercel sees the new commit and redeploys the website automatically (~1 minute).
+name: Daily LSTM forecast
+
+on:
+  schedule:
+    - cron: "30 0 * * *"        # 00:30 UTC = 06:00 IST, every day
+  workflow_dispatch: {}          # "Run workflow" button in the Actions tab (manual refresh)
+
+permissions:
+  contents: write                # allow the job to commit data/lstm.js
+
+concurrency:
+  group: daily-forecast
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Run trained LSTM on the latest Copernicus physics
+        env:
+          COPERNICUSMARINE_SERVICE_USERNAME: ${{ secrets.CMEMS_USERNAME }}
+          COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.CMEMS_PASSWORD }}
+          TF_ENABLE_ONEDNN_OPTS: "0"
+          TF_CPP_MIN_LOG_LEVEL: "2"
+        run: python pipeline/daily_forecast.py
+
+      - name: Commit the new forecast (Vercel redeploys on this commit)
+        run: |
+          git config user.name  "${{ github.repository_owner }}"
+          git config user.email "${{ github.repository_owner_id }}+${{ github.repository_owner }}@users.noreply.github.com"
+          git add data/lstm.js data/fdi.js
+          if git diff --cached --quiet; then
+            echo "No change in the forecast - nothing to commit."
+          else
+            git commit -m "Daily forecast $(TZ=Asia/Kolkata date +%Y-%m-%d) (automatic LSTM run)"
+            git push
+          fi

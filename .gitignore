@@ -1,0 +1,13 @@
+# Python / OS clutter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+desktop.ini
+# never commit credentials
+.env
+*.secret
+copernicusmarine-credentials*
+# local scratch
+aquastrat_daily_predictions_*.zip

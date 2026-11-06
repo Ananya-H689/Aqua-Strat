@@ -1,0 +1,5 @@
+# Only the web application is deployed to Vercel; the automation code and training files stay in GitHub.
+.github
+pipeline
+models/aqua_strat_best_v7.pt
+models/aqua_strat_lstm_v5.keras

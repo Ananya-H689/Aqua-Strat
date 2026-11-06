@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AQUA-STRAT — Marine Plastic Decision Support</title>
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="assets/css/premium-base.css">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+<!-- ============ Landing ============ -->
+<div id="landing" class="landing">
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Marine Environmental Intelligence</div>
+      <h1>AQUA-STRAT</h1>
+      <h2>Ecosystem-Aware Decision Support for Marine Plastic Intervention Planning</h2>
+      <div class="tag">DETECT • FORECAST • ASSESS • OPTIMIZE</div>
+      <p>Integrates the project's spatial ocean grid, trained YOLOv8 plastic detector, LSTM hotspot forecasts on Copernicus ocean physics, ecological-risk assessment and genetic-algorithm cleanup planning into one decision-support application for public awareness, research analysis and government planning.</p>
+      <div class="datebadge" id="landingData"></div>
+    </div>
+    <div class="rolebox">
+      <h3>Choose access</h3>
+      <button class="rolebtn" id="btnPublic">PUBLIC ACCESS<br><span class="muted">Pollution status, area search, beach safety, alerts, sighting reports</span></button>
+      <button class="rolebtn" id="btnResearcher">RESEARCHER LOGIN<br><span class="muted">Forecasts, model evaluation, risk, FDI validation, AI detector, data export</span></button>
+      <button class="rolebtn" id="btnGovernment">GOVERNMENT LOGIN<br><span class="muted">Cleanup planning with vessel routes, advisories, sighting review, reports</span></button>
+      <div class="footer-note">Researcher and Government access require a verified ID.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ App ============ -->
+<div id="app" class="app">
+  <aside class="sidebar">
+    <div class="brand">AQUA-STRAT<small>MARINE INTELLIGENCE</small></div>
+    <div id="nav" class="nav"></div>
+    <div class="side-foot" id="sideFoot"></div>
+  </aside>
+  <main class="main">
+    <div class="top">
+      <div><h2 id="pageTitle">Overview</h2><div class="muted" id="subtitle"></div></div>
+      <div class="top-actions">
+        <span id="areaChip" class="chip hidden"></span>
+        <label class="ctl"><span>Date</span><select id="dateSel"></select></label>
+        <label class="ctl"><span>Region</span><select id="region"><option value="ALL">ALL</option><option value="AS">AS</option><option value="BOB">BOB</option><option value="IO">IO</option></select></label>
+        <span id="rolePill" class="pill">PUBLIC</span>
+        <button class="ghost" id="btnExit">Exit</button>
+      </div>
+    </div>
+    <div id="content"></div>
+  </main>
+</div>
+
+<!-- ============ Login / Register ============ -->
+<div id="loginModal" class="loginmodal hidden"><div class="modal">
+  <h3 id="loginTitle">Login</h3><div id="loginHint" class="muted small"></div>
+  <label class="fl">Official e-mail<input id="loginEmail" type="email" autocomplete="username" spellcheck="false"></label>
+  <label class="fl"><span id="loginIdLabel">ID</span><input id="loginId" autocomplete="off" spellcheck="false"></label>
+  <label class="fl">Password<input id="loginPassword" type="password" autocomplete="current-password"></label>
+  <div class="row"><button class="primary" id="btnDoLogin">Login</button><button class="ghost" id="btnCloseLogin">Cancel</button><button class="ghost" id="btnOpenRegister">Register</button></div>
+  <div id="loginMsg" class="footer-note"></div>
+  <details class="demo"><summary>Demo accounts (for evaluation)</summary><div id="demoBox"></div></details>
+</div></div>
+<div id="registerModal" class="loginmodal hidden"><div class="modal">
+  <h3 id="regTitle">Register</h3><div id="regHint" class="muted small"></div>
+  <label class="fl">Full name<input id="regName" autocomplete="name"></label>
+  <label class="fl">Official e-mail<input id="regEmail" type="email" autocomplete="email" spellcheck="false"></label>
+  <label class="fl"><span id="regIdLabel">ID</span><input id="regId" autocomplete="off" spellcheck="false"></label>
+  <label class="fl">Password<input id="regPassword" type="password" autocomplete="new-password"></label>
+  <label class="fl">Confirm password<input id="regPassword2" type="password" autocomplete="new-password"></label>
+  <div class="row"><button class="primary" id="btnDoRegister">Create account</button><button class="ghost" id="btnCloseRegister">Cancel</button></div>
+  <div id="regMsg" class="footer-note"></div>
+</div></div>
+<div id="toast" class="toast hidden"></div>
+<div id="printArea"></div>
+
+<script src="assets/vendor/leaflet/leaflet.js"></script>
+<script src="data/grid.js"></script>
+<script src="data/lstm.js"></script>
+<script src="data/meta.js"></script>
+<script src="data/fdi.js"></script>
+<script src="data/places.js"></script>
+<script src="data/land.js"></script>
+<script src="assets/js/core.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/map.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/planner.js"></script>
+<script src="assets/js/detector.js"></script>
+<script src="assets/js/pages.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
