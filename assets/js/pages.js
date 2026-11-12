@@ -33,6 +33,20 @@ function pageMap(id, mode, onClick) {
   if (APP.area) M.area(APP.area); if (APP.selCell != null) M.select(APP.selCell);
   setTimeout(() => { if (APP.mapObj === M) M.map.invalidateSize() }, 60); return M
 }
+function layerToggles(opts) {
+  const nF = window.AQ_FDI ? AQ_FDI.idx.filter((i, k) => AQ_FDI.fdi_mean[k] > 0 && (APP.region === "ALL" || REG[G.r[i]] === APP.region)).length : 0;
+  return `<div class="lyr-toggle">${opts.zones ? `<label><input type="checkbox" id="tgZ" ${APP.tgZ ? "checked" : ""}> Show named high-risk zones</label>` : ""}${opts.fdi && window.AQ_FDI ? `<label><input type="checkbox" id="tgF" ${APP.tgF ? "checked" : ""}> Show Sentinel-2 debris-like signal (${nF} cells, FDI &gt; 0)</label>` : ""}</div><div id="zoneBox"></div>`
+}
+function wireToggles(M, opts) {
+  const D = APP.D();
+  const doZ = () => { const box = $("#zoneBox"); if (!APP.tgZ) { M.zones(null); if (box) box.innerHTML = ""; return }
+    const Z = riskZones(D, APP.region); M.zones(Z);
+    if (box) { box.innerHTML = `<div class="zonelist"><b>High-risk zones — ${dateLabel(APP.date, true)}</b> <span class="muted small">(groups of ≥ 3 neighbouring High-risk cells; click a zone to zoom)</span><div class="tablewrap" style="max-height:190px;margin-top:6px"><table><thead><tr><th>Zone</th><th>Location</th><th>Cells</th><th>Area (km²)</th><th>Mean density</th></tr></thead><tbody>${Z.map((z, k) => `<tr class="ck zrow" data-k="${k}"><td><b>Zone ${z.n}</b></td><td>${esc(z.name)}</td><td>${z.cells.length}</td><td>${fmtN(z.area)}</td><td>${z.meanP.toFixed(4)}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No group of 3 or more neighbouring High-risk cells on this date.</td></tr>`}</tbody></table></div></div>`;
+      $$("#zoneBox tr.zrow").forEach(r => r.onclick = () => M.map.fitBounds(Z[+r.dataset.k].bounds, { maxZoom: 8 })) } };
+  const doF = () => M.fdi(APP.tgF);
+  if (opts.zones && $("#tgZ")) { $("#tgZ").onchange = e => { APP.tgZ = e.target.checked; doZ() }; doZ() }
+  if (opts.fdi && $("#tgF")) { $("#tgF").onchange = e => { APP.tgF = e.target.checked; doF() }; doF() }
+}
 function legendTier(title) { return `<div class="maplegend"><b>${title || "Predicted accumulation tier"}</b>${TIER.map((t, k) => `<div class="lg"><i style="background:${hexA(TIERC[k], k ? .7 : .4)}"></i>${t}</div>`).slice().reverse().join("")}<div class="muted small" style="margin-top:4px">Tertiles of LSTM output for the date</div></div>` }
 
 /* ---------- shared: cell info ---------- */
@@ -89,7 +103,7 @@ PAGES.overview = c => {
   <div class="section">${card("", dayStrip())}</div>
   <div class="section grid two"><div class="card"><h3>Indian Ocean Pollution Intelligence</h3><div class="mapwrap"><div id="map" class="map"></div>${legendTier()}</div><div class="footer-note">${srcLine(D)}</div></div>
   <div class="card"><h3>Decision Snapshot</h3><p><b>Region:</b> ${REGN[APP.region]} · <b>Date:</b> ${dateLabel(APP.date, true)}</p><p><b>Scored cells:</b> ${fmtN(S.n)} · <b>Medium hotspots:</b> ${fmtN(S.med)} · <b>Medium-risk:</b> ${fmtN(S.rmed)}</p>
-  ${plan ? `<p><b>Today's GA plan:</b> ${plan.sel.length} sites · pollution removed ${plan.tot.removed.toFixed(3)} · cost ${fmtN(plan.tot.cost)} units · ${plan.trips.length} trips</p>` : ""}
+  ${plan ? `<p><b>Today's GA plan:</b> ${plan.sel.length} sites · plastic index removed ${plan.tot.removed.toFixed(3)} · cost ${fmtN(plan.tot.cost)} units · ${plan.trips.length} trips</p>` : ""}
   <h4 style="margin:14px 0 6px">Top hotspots</h4><div class="tablewrap" style="max-height:220px"><table><thead><tr><th>#</th><th>Grid</th><th>Density</th><th>Tier</th></tr></thead><tbody>${hs.map((i, n) => `<tr class="ck" data-i="${i}"><td>H${n + 1}</td><td>${G.id[i]}</td><td>${D.P[i].toFixed(4)}</td><td class="tier-${TIER[D.tier[i]].toLowerCase()}">${TIER[D.tier[i]]}</td></tr>`).join("")}</tbody></table></div>
   <h4 style="margin:14px 0 6px">Selected cell</h4><div id="cellBox">${cellInfo(APP.selCell)}</div>
   <p class="footer-note">Model-assisted decision support — not an official operational order.</p></div></div>`;
@@ -199,26 +213,26 @@ PAGES.sighting = c => {
 
 PAGES.hotspots = c => {
   const D = APP.D(), pk = prevKey(APP.date), Dp = pk ? day(pk) : null, rows = IDX[APP.region].slice().sort((a, b) => D.P[b] - D.P[a]).slice(0, 500);
-  c.innerHTML = `<div class="grid two"><div class="card"><h3>Hotspot map — ${dateLabel(APP.date, true)}</h3><div class="mapwrap"><div id="map" class="map"></div>${legendTier()}</div><div class="footer-note">${srcLine(D)}</div></div>
+  c.innerHTML = `<div class="grid two"><div class="card"><h3>Hotspot map — ${dateLabel(APP.date, true)}</h3>${layerToggles({ zones: true, fdi: true })}<div class="mapwrap"><div id="map" class="map"></div>${legendTier()}</div><div class="footer-note">${srcLine(D)}</div></div>
   <div class="card"><div class="notice small">Top 500 of ${fmtN(IDX[APP.region].length)} scored cells by LSTM-predicted density. Click a row to locate it.</div><div class="tablewrap section"><table><thead><tr><th>Grid</th><th>Region</th><th>Density</th><th>Tier</th>${Dp ? "<th>Δ prev</th>" : ""}<th>Lat</th><th>Lon</th></tr></thead><tbody>${rows.map(i => { const d = Dp ? D.P[i] - Dp.P[i] : 0; return `<tr class="ck" data-i="${i}"><td>${G.id[i]}</td><td>${REG[G.r[i]]}</td><td>${D.P[i].toFixed(5)}</td><td class="tier-${TIER[D.tier[i]].toLowerCase()}">${TIER[D.tier[i]]}</td>${Dp ? `<td class="${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}${Math.abs(d).toFixed(4)}</td>` : ""}<td>${G.lat[i].toFixed(3)}</td><td>${G.lon[i].toFixed(3)}</td></tr>` }).join("")}</tbody></table></div></div></div>`;
-  const M = pageMap("map", "tier"); M.hotspots(hotspotList(D, APP.region, 10, APP.region === "IO" || APP.region === "ALL" ? 250 : 120));
-  $$("tr.ck").forEach(r => r.onclick = () => { const i = +r.dataset.i; APP.selCell = i; M.select(i); M.map.setView([G.lat[i], G.lon[i]], 8); $$("tr.sel").forEach(x => x.classList.remove("sel")); r.classList.add("sel") })
+  const M = pageMap("map", "tier"); M.hotspots(hotspotList(D, APP.region, 10, APP.region === "IO" || APP.region === "ALL" ? 250 : 120)); wireToggles(M, { zones: true, fdi: true });
+  $$("tr.ck:not(.zrow)").forEach(r => r.onclick = () => { const i = +r.dataset.i; APP.selCell = i; M.select(i); M.map.setView([G.lat[i], G.lon[i]], 8); $$("tr.sel").forEach(x => x.classList.remove("sel")); r.classList.add("sel") })
 };
 
 PAGES.forecast = c => {
   const D = APP.D(), run = DATA.run || {}, m = AQ_META.lstm_metrics, pl = AQ_META.lstm_pooled;
   c.innerHTML = `${card("Daily model runs — select a date", dayStrip() + (DATA.daily ? sparkSVG(dateMeans(APP.region), DATA.dates.map(d => d.key), `${REGN[APP.region]} mean predicted density per model date`, true) : ""))}
-  <div class="section grid two"><div class="card"><h3>Predicted plastic-accumulation density — ${dateLabel(APP.date, true)}</h3><div class="mapwrap"><div id="map" class="map"></div><div class="maplegend"><b>Predicted density</b><div style="height:10px;width:150px;border-radius:5px;background:linear-gradient(90deg,${[0, .25, .5, .75, 1].map(v => rampColor(v, 1)).join(",")})"></div><div class="lg" style="justify-content:space-between"><span>${D.pmin.toFixed(3)}</span><span>${D.pmax.toFixed(3)}</span></div></div></div><div class="footer-note">${srcLine(D)}</div></div>
+  <div class="section grid two"><div class="card"><h3>Predicted plastic-accumulation density — ${dateLabel(APP.date, true)}</h3>${layerToggles({ fdi: true })}<div class="mapwrap"><div id="map" class="map"></div><div class="maplegend"><b>Predicted density</b><div style="height:10px;width:150px;border-radius:5px;background:linear-gradient(90deg,${[0, .25, .5, .75, 1].map(v => rampColor(v, 1)).join(",")})"></div><div class="lg" style="justify-content:space-between"><span>${D.pmin.toFixed(3)}</span><span>${D.pmax.toFixed(3)}</span></div></div></div><div class="footer-note">${srcLine(D)}</div></div>
   <div class="card"><h3>Model run</h3><table class="kv">${DATA.daily ? `<tr><td>Model</td><td>aqua_strat_lstm_v5.keras (no retraining)</td></tr><tr><td>Inputs</td><td>Copernicus GLOBAL_ANALYSISFORECAST_PHY_001_024 — SST, salinity, u/v currents, SSH (daily, 1/12°)</td></tr><tr><td>Dates available</td><td>${dateLabel(DATA.dates[0].key, true)} → ${dateLabel(DATA.dates[DATA.dates.length - 1].key, true)} (${DATA.dates.length})</td></tr><tr><td>Forecast-physics dates</td><td>${DATA.dates.filter(d => d.physics === "forecast").length}</td></tr><tr><td>Inference run</td><td>${esc(run.run_date || "—")}</td></tr><tr><td>Pipeline check vs v5</td><td>${run.verified_vs_v5 === "True" ? '<span class="ok-msg">✅ reproduces saved v5 output</span>' : esc(run.verified_vs_v5 || "—")}</td></tr>` : `<tr><td>Prediction source</td><td>predicted_hotspots_v5.csv (14,777 cells)</td></tr>`}<tr><td>Window / horizon</td><td>14 days → next day</td></tr></table>
   <h3 class="section">Test metrics by region</h3><table><thead><tr><th>Region</th><th>MAE</th><th>RMSE</th><th>R²</th><th>Samples</th></tr></thead><tbody>${m.map(r => `<tr><td>${r.Region}</td><td>${(+r.MAE).toFixed(5)}</td><td>${(+r.RMSE).toFixed(5)}</td><td>${(+r.R2).toFixed(4)}</td><td>${fmtN(r["Test samples"])}</td></tr>`).join("")}<tr><th>Pooled</th><th>${pl.MAE}</th><th>${pl.RMSE}</th><th>${pl.R2}</th><th>${fmtN(pl.samples)}</th></tr></tbody></table><p class="footer-note">Measured test results of the trained LSTM (no target metric is hard-coded).</p></div></div>`;
-  wireStrip(); pageMap("map", "density")
+  wireStrip(); const M = pageMap("map", "density"); wireToggles(M, { fdi: true })
 };
 
 PAGES.risk = c => {
   const D = APP.D(), rows = IDX[APP.region].slice().sort((a, b) => D.rc[b] - D.rc[a]).slice(0, 1000); let t = [0, 0, 0]; for (const i of IDX[APP.region]) t[D.rtier[i]]++;
-  c.innerHTML = `<div class="grid kpis">${kpi("High risk", fmtN(t[2]))}${kpi("Medium risk", fmtN(t[1]))}${kpi("Low risk", fmtN(t[0]))}${kpi("Date", dateLabel(APP.date))}</div><div class="section grid two"><div class="card"><h3>Ecological risk map</h3><div class="mapwrap"><div id="map" class="map"></div>${legendTier("Combined risk tier (P×H, P×W)")}</div><div class="footer-note">Risk = predicted density × habitat sensitivity (P×H) and × wildlife exposure (P×W); combined = ½·P×H + ½·P×W. Tiers: zero risk → Low, non-zero split at the median (Objective-4 v6).</div></div>
+  c.innerHTML = `<div class="grid kpis">${kpi("High risk", fmtN(t[2]))}${kpi("Medium risk", fmtN(t[1]))}${kpi("Low risk", fmtN(t[0]))}${kpi("Date", dateLabel(APP.date))}</div><div class="section grid two"><div class="card"><h3>Ecological risk map</h3>${layerToggles({ zones: true })}<div class="mapwrap"><div id="map" class="map"></div>${legendTier("Combined risk tier (P×H, P×W)")}</div><div class="footer-note">Risk = predicted density × habitat sensitivity (P×H) and × wildlife exposure (P×W); combined = ½·P×H + ½·P×W. Tiers: zero risk → Low, non-zero split at the median (Objective-4 v6).</div></div>
   <div class="card"><h3>Risk-ranked cells</h3><div class="tablewrap"><table><thead><tr><th>Grid</th><th>P×H</th><th>P×W</th><th>Combined</th><th>Tier</th></tr></thead><tbody>${rows.map(i => `<tr class="ck" data-i="${i}"><td>${G.id[i]}</td><td>${D.rh[i].toFixed(4)}</td><td>${D.rw[i].toFixed(4)}</td><td>${D.rc[i].toFixed(4)}</td><td class="tier-${TIER[D.rtier[i]].toLowerCase()}">${TIER[D.rtier[i]]}</td></tr>`).join("")}</tbody></table></div></div></div>`;
-  const M = pageMap("map", "risk"); $$("tr.ck").forEach(r => r.onclick = () => { const i = +r.dataset.i; APP.selCell = i; M.select(i); M.map.setView([G.lat[i], G.lon[i]], 8) })
+  const M = pageMap("map", "risk"); wireToggles(M, { zones: true }); $$("tr.ck:not(.zrow)").forEach(r => r.onclick = () => { const i = +r.dataset.i; APP.selCell = i; M.select(i); M.map.setView([G.lat[i], G.lon[i]], 8) })
 };
 
 PAGES.fdi = c => {
@@ -280,17 +294,44 @@ PAGES.ga = c => {
   };
   const out = () => {
     const p = APP.plan(); const sv = p.directKm ? (1 - p.routedKm / p.directKm) * 100 : 0, b = AQ_META.ga_summary;
-    $("#pOut").innerHTML = `<div class="grid" style="grid-template-columns:repeat(3,1fr)">${kpi("Sites", p.sel.length)}${kpi("Pollution removed", p.tot.removed.toFixed(3))}${kpi("Cost (units)", fmtN(p.tot.cost))}${kpi("Disturbance risk", p.tot.dist.toFixed(3))}${kpi("Route distance", fmtN(p.routedKm) + " km", `<div class="delta down">${sv.toFixed(0)}% shorter than direct trips</div>`)}${kpi("Duration", p.days.toFixed(1) + " days", `<div class="delta muted">${p.prm.vessels} vessel${p.prm.vessels > 1 ? "s" : ""}</div>`)}</div>
+    $("#pOut").innerHTML = `<div class="grid" style="grid-template-columns:repeat(3,1fr)">${kpi("Sites", p.sel.length)}${kpi("Plastic index removed", p.tot.removed.toFixed(3), `<div class="delta muted">sum of predicted density index (0–1) of selected cells</div>`)}${kpi("Cost (units)", fmtN(p.tot.cost))}${kpi("Disturbance risk", p.tot.dist.toFixed(3))}${kpi("Route distance", fmtN(toNM(p.routedKm)) + " NM", `<div class="delta muted">(${fmtN(p.routedKm)} km)</div><div class="delta down">${sv.toFixed(0)}% shorter than direct trips</div>`)}${kpi("Duration", p.days.toFixed(1) + " days", `<div class="delta muted">${p.prm.vessels} vessel${p.prm.vessels > 1 ? "s" : ""} · ${(p.prm.speed / 24 / KM_PER_NM).toFixed(1)} knots</div>`)}</div>
     <div class="section">${convSVG(p)}</div>
-    <h4>Vessel trips</h4><div class="tablewrap" style="max-height:260px"><table><thead><tr><th>Trip</th><th>Route</th><th>km</th><th>Days</th></tr></thead><tbody>${p.trips.map((t, k) => `<tr class="ck trip-row ${APP.hiTrip === k ? "sel" : ""}" data-k="${k}"><td><span class="sw" style="background:${t.col}"></span><b>${t.name}</b> · V${t.v + 1}</td><td>⚓ ${esc(t.port.name)} → ${t.stops.map((s, n) => `<b>${n + 1}</b> ${G.id[s.i]}`).join(" → ")} → ⚓</td><td>${fmtN(t.km)}</td><td>${t.start.toFixed(1)}–${(t.start + t.days).toFixed(1)}</td></tr>`).join("")}</tbody></table></div>
+    <h4>Vessel trips</h4><div class="tablewrap" style="max-height:260px"><table><thead><tr><th>Trip</th><th>Route</th><th>NM</th><th>Days</th></tr></thead><tbody>${p.trips.map((t, k) => `<tr class="ck trip-row ${APP.hiTrip === k ? "sel" : ""}" data-k="${k}"><td><span class="sw" style="background:${t.col}"></span><b>${t.name}</b> · V${t.v + 1}</td><td>⚓ ${esc(t.port.name)} → ${t.stops.map((s, n) => `<b>${n + 1}</b> ${G.id[s.i]}`).join(" → ")} → ⚓${tripLand(t).length ? ` <span class="landwarn" title="Straight great-circle leg passes over land; a real sea route would be longer">⚠ crosses land (leg ${tripLand(t).map(m => m + 1).join(", ")})</span>` : ""}</td><td>${fmtN(toNM(t.km))}${tripLand(t).length ? "*" : ""}</td><td>${t.start.toFixed(1)}–${(t.start + t.days).toFixed(1)}</td></tr>`).join("")}</tbody></table></div>${calcBox(p, sv)}
     <h4 class="section">Vessel schedule</h4>${gantt(p)}
-    <div class="notice small section"><b>Notebook baseline (Objective-4, 16 Aug run):</b> ${b.sites_selected} sites · pollution removed ${(+b.total_pollution_removed).toFixed(3)} · cost ${fmtN(+b.total_cost)} · ${b.generations} generations. This plan uses the same GA formulation on ${dateLabel(APP.date, true)}'s predictions · fitness ${p.fitness.toFixed(1)} · computed in ${p.ms} ms.</div>`;
+    <div class="notice small section"><b>Notebook baseline (Objective-4, 16 Aug run):</b> ${b.sites_selected} sites · plastic index removed ${(+b.total_pollution_removed).toFixed(3)} · cost ${fmtN(+b.total_cost)} · ${b.generations} generations. This plan uses the same GA formulation on ${dateLabel(APP.date, true)}'s predictions · fitness ${p.fitness.toFixed(1)} · computed in ${p.ms} ms.</div>`;
     $$("#pOut tr.ck").forEach(r => r.onclick = () => { const k = +r.dataset.k; APP.hiTrip = APP.hiTrip === k ? -1 : k; draw() })
   };
   $("#pRun").onclick = () => { Object.assign(APP.planPrm, { scope: $("#pScope").value, maxSites: clamp(+$("#pMax").value || 40, 5, 100), wP: +$("#pWP").value, wC: +$("#pWC").value, wR: +$("#pWR").value, gens: clamp(+$("#pGen").value || 150, 20, 400), ports: $("#pPorts").value, vessels: clamp(+$("#pVes").value || 4, 1, 12), stops: clamp(+$("#pStops").value || 4, 1, 6) }); APP.planCache.clear(); APP.hiTrip = -1; APP._planFitted = null; draw(); toast("✅ Plan re-optimised") };
   draw()
 };
 function convSVG(p) { const w = 520, h = 120, a = p.hist, b = p.avg, mn = Math.min(...b.filter(x => x > -1e5), ...a), mx = Math.max(...a), px = k => 30 + k * (w - 40) / (a.length - 1), py = v => h - 20 - (clamp(v, mn, mx) - mn) / ((mx - mn) || 1) * (h - 34); return `<svg viewBox="0 0 ${w} ${h}" width="100%"><polyline fill="none" stroke="#9db3c2" stroke-width="1.3" points="${b.map((v, k) => px(k) + "," + py(v)).join(" ")}"/><polyline fill="none" stroke="#0b5c8e" stroke-width="2.2" points="${a.map((v, k) => px(k) + "," + py(v)).join(" ")}"/><text x="30" y="12" font-size="10" fill="#0b5c8e">best fitness</text><text x="110" y="12" font-size="10" fill="#7b93a5">population average</text><text x="${w - 70}" y="${h - 4}" font-size="9" fill="#64748b">generation ${a.length}</text></svg>` }
+function calcBox(p, sv) {
+  const t0 = p.trips[0]; if (!t0) return "";
+  const s0 = t0.stops[0], la1 = t0.port.lat, lo1 = t0.port.lon, la2 = G.lat[s0.i], lo2 = G.lon[s0.i], r = Math.PI / 180,
+    a = Math.sin((la2 - la1) * r / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2, dkm = haversine(la1, lo1, la2, lo2),
+    kmh = p.prm.speed / 24, kn = kmh / KM_PER_NM, legs = p.trips.reduce((x, t) => x + t.stops.length + 1, 0), land = p.trips.reduce((x, t) => x + tripLand(t).length, 0),
+    landKm = p.trips.reduce((x, t) => { const P = tripPts(t); return x + tripLand(t).reduce((y, m) => y + haversine(P[m][0], P[m][1], P[m + 1][0], P[m + 1][1]), 0) }, 0),
+    f = (v, d) => v.toFixed(d == null ? 2 : d), sign = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2);
+  return `<details class="calcbox section"><summary>ⓘ How is this calculated?</summary><div class="calc">
+  <h5>1 · Distance of each leg: Haversine great-circle formula</h5>
+  <div class="eq">d = 2R · asin( √( sin²(Δφ/2) + cos φ₁ · cos φ₂ · sin²(Δλ/2) ) ),&nbsp; R = ${fmtN(R_KM)} km = ${R_NM.toLocaleString("en-IN", { maximumFractionDigits: 1 })} NM</div>
+  <p><b>Worked example</b> (trip ${t0.name}, first leg): ⚓ ${esc(t0.port.name)} (φ₁ ${f(la1)}°, λ₁ ${f(lo1)}°) → stop 1 ${G.id[s0.i]} (φ₂ ${f(la2)}°, λ₂ ${f(lo2)}°)<br>
+  Δφ = ${sign(la2 - la1)}°, Δλ = ${sign(lo2 - lo1)}° → sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2) = ${a.toExponential(3)}<br>
+  d = 2 × ${R_NM.toLocaleString("en-IN", { maximumFractionDigits: 1 })} × asin(√${a.toExponential(3)}) = <b>${f(toNM(dkm), 1)} NM</b> (= ${f(dkm, 1)} km)</p>
+  <h5>2 · Route distance</h5>
+  <p>Sum of all ${legs} legs (port → stops → port) = ${fmtN(p.routedKm)} km ÷ 1.852 = <b>${fmtN(toNM(p.routedKm))} NM</b>.<br>
+  Direct trips (one return trip per site) = ${fmtN(toNM(p.directKm))} NM, so the combined routes are <b>${sv.toFixed(0)}% shorter</b>.</p>
+  <h5>3 · Vessel speed</h5>
+  <p>${fmtN(p.prm.speed)} km/day ÷ 24 = ${f(kmh, 1)} km/h ÷ 1.852 = <b>${f(kn, 1)} knots</b> (1 knot = 1 NM per hour).</p>
+  <h5>4 · Duration</h5>
+  <p>Each trip = distance ÷ speed + 0.5 day per cleanup stop. Example ${t0.name}: ${fmtN(t0.km)} km ÷ ${fmtN(p.prm.speed)} km/day + 0.5 × ${t0.stops.length} = <b>${f(t0.days)} days</b>.<br>
+  Trips are shared among ${p.prm.vessels} vessel${p.prm.vessels > 1 ? "s" : ""} working in parallel; the plan takes as long as the busiest vessel = <b>${p.days.toFixed(1)} days</b>.</p>
+  <h5>5 · Cost units</h5>
+  <p>Per site: distance from its port (km) × 1 + 50 fixed → total for ${p.sel.length} sites = <b>${fmtN(p.tot.cost)} units</b>.</p>
+  <h5>6 · Land check</h5>
+  <p>${land ? `<span class="landwarn">⚠ ${land} of ${legs} legs</span> (${fmtN(toNM(landKm))} NM) pass over land on the straight great-circle line, checked against the coastline map. Real sea routes around the land would be longer, so those trip distances are lower-bound estimates.` : `✅ No leg passes over land (checked against the coastline map).`}</p>
+  </div></details>`
+}
 function gantt(p) { const T = Math.max(1, p.days), w = 100; return `<div class="small">${p.vessels.map((v, j) => `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><b style="width:28px">V${j + 1}</b><div style="flex:1;position:relative;height:18px;background:#eef3f6;border-radius:5px">${v.trips.map(t => `<div title="${t.name}: day ${t.start.toFixed(1)}–${(t.start + t.days).toFixed(1)}" style="position:absolute;left:${t.start / T * w}%;width:${Math.max(1.5, t.days / T * w)}%;top:2px;bottom:2px;background:${t.col};border-radius:4px;color:#fff;font-size:10px;line-height:14px;padding-left:3px;overflow:hidden">${t.name}</div>`).join("")}</div></div>`).join("")}<div class="muted" style="text-align:right">0 → ${T.toFixed(1)} days</div></div>` }
 
 PAGES.advisories = c => {
@@ -355,7 +396,7 @@ function reportHTML() {
   <h3>Top hotspots</h3><table><tr><th>#</th><th>Grid</th><th>Lat</th><th>Lon</th><th>Density</th><th>Risk</th></tr>${hs.map((i, n) => `<tr><td>H${n + 1}</td><td>${G.id[i]}</td><td>${G.lat[i].toFixed(2)}</td><td>${G.lon[i].toFixed(2)}</td><td>${D.P[i].toFixed(4)}</td><td>${TIER[D.rtier[i]]}</td></tr>`).join("")}</table>
   <h3>Alerts</h3>${alertsFor(regA, D, REGN[APP.region]).map(a => `<p>• <b>${a[1]}</b> — ${a[2]}</p>`).join("")}
   ${APP.area ? `<h3>Area of interest: ${esc(APP.area.name)} (${APP.area.km} km)</h3>${alertsFor(APP.area, D).map(a => `<p>• <b>${a[1]}</b> — ${a[2]}</p>`).join("")}` : ""}
-  ${p ? `<h3>GA cleanup plan</h3><p>${p.sel.length} sites · pollution removed ${p.tot.removed.toFixed(3)} · cost ${fmtN(p.tot.cost)} units · disturbance ${p.tot.dist.toFixed(3)} · ${p.trips.length} trips · ${fmtN(p.routedKm)} km · ${p.days.toFixed(1)} days with ${p.prm.vessels} vessels</p><table><tr><th>Trip</th><th>Vessel</th><th>Route</th><th>km</th></tr>${p.trips.map(t => `<tr><td>${t.name}</td><td>V${t.v + 1}</td><td>${esc(t.port.name)} → ${t.stops.map(s => G.id[s.i]).join(" → ")} → ${esc(t.port.name)}</td><td>${fmtN(t.km)}</td></tr>`).join("")}</table>` : ""}
+  ${p ? `<h3>GA cleanup plan</h3><p>${p.sel.length} sites · plastic index removed ${p.tot.removed.toFixed(3)} · cost ${fmtN(p.tot.cost)} units · disturbance ${p.tot.dist.toFixed(3)} · ${p.trips.length} trips · ${fmtN(toNM(p.routedKm))} NM (${fmtN(p.routedKm)} km) · ${p.days.toFixed(1)} days with ${p.prm.vessels} vessels</p><table><tr><th>Trip</th><th>Vessel</th><th>Route</th><th>NM</th></tr>${p.trips.map(t => `<tr><td>${t.name}</td><td>V${t.v + 1}</td><td>${esc(t.port.name)} → ${t.stops.map(s => G.id[s.i]).join(" → ")} → ${esc(t.port.name)}${tripLand(t).length ? " ⚠ crosses land" : ""}</td><td>${fmtN(toNM(t.km))}</td></tr>`).join("")}</table>${(() => { const n = p.trips.reduce((a, t) => a + tripLand(t).length, 0); return n ? `<p style="font-size:11px">⚠ ${n} route leg${n > 1 ? "s" : ""} pass over land on the straight great-circle line; real sea routes would be longer. 1 NM = 1.852 km.</p>` : "" })()}` : ""}
   <h3>Models</h3><p>Detection: YOLOv8m (P ${AQ_META.cnn.precision}, R ${AQ_META.cnn.recall}, mAP@50 ${AQ_META.cnn.map50}). Forecast: region-weighted LSTM v5 (pooled R² ${AQ_META.lstm_pooled.R2}). FDI: supporting satellite validation (ρ = ${AQ_META.fdi.rho}).</p>
   <p style="margin-top:18px"><i>Scientific note: model-assisted decision support from the project's trained models. FDI is a supporting validation layer. Not an official operational order.</i></p>`
 }

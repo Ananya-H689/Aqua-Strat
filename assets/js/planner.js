@@ -57,3 +57,50 @@ function routePlan(sel, prm) {
   const direct = sel.reduce((a, s) => a + 2 * s.km, 0), routed = trips.reduce((a, t) => a + t.km, 0);
   return { trips, vessels: vs, routedKm: routed, directKm: direct, days: Math.max(0, ...vs.map(v => v.d)) }
 }
+
+/* ---- Display helpers (Nov 2026): nautical miles, land-crossing check, named high-risk zones.
+   They only read the existing plan / forecast; GA selection, routes and all numbers are unchanged. ---- */
+const KM_PER_NM = 1.852, R_KM = 6371, R_NM = R_KM / KM_PER_NM;
+const toNM = km => km / KM_PER_NM;
+let _LANDR = null;
+function landRings() {
+  if (_LANDR) return _LANDR; _LANDR = [];
+  for (const f of AQ_LAND.features) { const g = f.geometry, ps = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+    for (const pg of ps) { const r = pg[0]; let a = 90, b = -90, c = 360, d = -360; for (const [x, y] of r) { if (y < a) a = y; if (y > b) b = y; if (x < c) c = x; if (x > d) d = x } _LANDR.push({ r, a, b, c, d }) } }
+  return _LANDR
+}
+function onLand(la, lo) {
+  for (const R of landRings()) { if (la < R.a || la > R.b || lo < R.c || lo > R.d) continue; let c = false; const r = R.r;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if (((yi > la) !== (yj > la)) && (lo < (xj - xi) * (la - yi) / (yj - yi) + xi)) c = !c }
+    if (c) return true }
+  return false
+}
+// a leg "crosses land" when at least 2 interior sample points of the straight leg fall on the coastline polygons
+// (the first/last 15 km next to a port are ignored, because port coordinates are on land)
+function legOverLand(a, b, portA, portB) { const S = 40, L = haversine(a[0], a[1], b[0], b[1]); let n = 0; for (let s = 2; s <= S - 2; s++) { const f = s / S; if ((portA && f * L < 15) || (portB && (1 - f) * L < 15)) continue; if (onLand(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)) n++ } return n >= 2 }
+function tripPts(t) { return [[t.port.lat, t.port.lon], ...t.stops.map(s => [G.lat[s.i], G.lon[s.i]]), [t.port.lat, t.port.lon]] }
+function tripLand(t) { if (t._land) return t._land; const P = tripPts(t), legs = []; for (let m = 0; m < P.length - 1; m++) if (legOverLand(P[m], P[m + 1], m === 0, m === P.length - 2)) legs.push(m); return (t._land = legs) }
+
+// connected groups (8-neighbour) of High ecological-risk cells for the selected date and region
+function riskZones(D, reg, minCells) {
+  const ix = IDX[reg || "ALL"], zid = new Int32Array(N).fill(-1), hi = new Uint8Array(N); for (const i of ix) if (D.rtier[i] === 2) hi[i] = 1;
+  const nb = (i, p, q) => { const Lk = LOOK[G.r[i]], a = Math.round((G.lat[i] - Lk.la0) / Lk.dn), b = Math.round((G.lon[i] - Lk.lo0) / Lk.dl); return Lk.m.get((a + p) * 8192 + b + q) };
+  const raw = [];
+  for (const i of ix) { if (!hi[i] || zid[i] >= 0) continue; const cells = [], st = [i]; zid[i] = raw.length;
+    while (st.length) { const x = st.pop(); cells.push(x); for (const [p, q] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) { const j = nb(x, p, q); if (j !== undefined && hi[j] && zid[j] < 0) { zid[j] = raw.length; st.push(j) } } }
+    raw.push(cells) }
+  const beaches = PLACES.filter(p => p.kind === "beach");
+  const near = (la, lo) => { let best = null, bd = 1e9; for (const p of beaches) { const d = haversine(la, lo, p.lat, p.lon); if (d < bd) { bd = d; best = p } }
+    if (bd > 150) for (const p of PLACES) { const d = haversine(la, lo, p.lat, p.lon); if (d < bd) { bd = d; best = p } } return [best, bd] };
+  return raw.filter(c => c.length >= (minCells || 3)).sort((a, b) => b.length - a.length).map((cells, k) => {
+    const id = zid[cells[0]], [dn, dl] = G.spacing[REG[G.r[cells[0]]]]; let la = 0, lo = 0, area = 0, sp = 0; const segs = [];
+    for (const i of cells) { la += G.lat[i]; lo += G.lon[i]; sp += D.P[i]; area += (dn * 111.32) * (dl * 111.32 * Math.cos(G.lat[i] * Math.PI / 180));
+      const y = G.lat[i], x = G.lon[i], n = y + dn / 2, s = y - dn / 2, w = x - dl / 2, e = x + dl / 2, out = (p, q) => { const j = nb(i, p, q); return j === undefined || zid[j] !== id };
+      if (out(1, 0)) segs.push([[n, w], [n, e]]); if (out(-1, 0)) segs.push([[s, w], [s, e]]); if (out(0, 1)) segs.push([[n, e], [s, e]]); if (out(0, -1)) segs.push([[n, w], [s, w]]) }
+    la /= cells.length; lo /= cells.length;
+    let c0 = cells[0], cd = 1e9; for (const i of cells) { const d = (G.lat[i] - la) ** 2 + (G.lon[i] - lo) ** 2; if (d < cd) { cd = d; c0 = i } }   // label on a real zone cell
+    const [p, d] = near(la, lo), name = p ? (d < 40 ? "off " + p.name : Math.round(d) + " km from " + p.name) : REGN[REG[G.r[c0]]];
+    return { n: k + 1, cells, segs, area, meanP: sp / cells.length, lat: G.lat[c0], lon: G.lon[c0], name, region: REG[G.r[c0]], near: p, nearKm: d,
+      bounds: [[Math.min(...cells.map(i => G.lat[i])) - dn, Math.min(...cells.map(i => G.lon[i])) - dl], [Math.max(...cells.map(i => G.lat[i])) + dn, Math.max(...cells.map(i => G.lon[i])) + dl]] }
+  })
+}

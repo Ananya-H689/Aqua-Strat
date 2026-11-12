@@ -90,3 +90,15 @@ tr.sel td{background:#e8f4fb!important}
 #printArea{display:none}
 @media print{body>*:not(#printArea){display:none!important}#printArea{display:block!important;padding:0 6mm;color:#111}#printArea table{font-size:11px}#printArea th,#printArea td{white-space:normal;border-bottom:1px solid #ccc}.noprint{display:none!important}}
 @media(max-width:1100px){.two{grid-template-columns:1fr}.formgrid{grid-template-columns:1fr}}
+/* Nov 2026 display additions: optional layers, zones, nautical-mile calculation, land warning */
+.lyr-toggle{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 8px;font-size:13px;color:#102a43}
+.lyr-toggle label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.zonelist{margin:0 0 10px;font-size:13px}
+.zone-ic{background:#fff;border:2px solid #7a0f1c;color:#7a0f1c;font:700 11px Inter,Segoe UI,Arial,sans-serif;padding:2px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.land-ic{width:20px;height:20px;border-radius:50%;background:#fff7e8;border:2px solid #b45309;color:#b45309;font:800 12px Arial;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.landwarn{color:#b45309;font-weight:700;white-space:nowrap}
+.calcbox summary{cursor:pointer;color:var(--blue);font-weight:700;padding:8px 0}
+.calcbox .calc{border:1px solid var(--line);border-radius:10px;padding:12px 16px;background:#f9fbfd;font-size:13px;line-height:1.55}
+.calcbox h5{margin:10px 0 4px;font-size:13px;color:#0b2e44}.calcbox h5:first-child{margin-top:0}
+.calcbox .eq{font-family:Cambria,"Times New Roman",serif;font-size:15px;background:#fff;border:1px dashed #b7c9d6;border-radius:8px;padding:8px 12px;margin:4px 0;white-space:normal}
+.calcbox p{margin:4px 0}

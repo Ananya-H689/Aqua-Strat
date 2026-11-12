@@ -58,7 +58,7 @@ function makeMap(el, opt) {
   map.on("baselayerchange", e => { try { localStorage.setItem("aq_basemap", e.name === "Light grey" ? "gray" : e.name === "Satellite" ? "sat" : "ocean") } catch (er) { } });
   const st = { mode: opt.mode || "tier", sel: null, hl: [] };
   const grid = new GridLayer({ D: () => APP.D(), region: () => APP.region, mode: () => st.mode, selected: () => st.sel, highlight: () => st.hl }); grid.addTo(map);
-  const over = L.layerGroup().addTo(map), routes = L.layerGroup().addTo(map), area = L.layerGroup().addTo(map);
+  const over = L.layerGroup().addTo(map), routes = L.layerGroup().addTo(map), area = L.layerGroup().addTo(map); const zoneL = L.layerGroup().addTo(map), fdiL = L.layerGroup().addTo(map);
   map.createPane("routePane").style.zIndex = 620; map.createPane("markPane").style.zIndex = 640;
   const svgR = L.svg({ pane: "routePane", padding: .5 });
   const tip = L.DomUtil.create("div", "", map.getContainer()); tip.style.cssText = "position:absolute;z-index:700;pointer-events:none;background:#071a2b;color:#fff;padding:5px 8px;border-radius:7px;font-size:12px;display:none;white-space:nowrap";
@@ -86,6 +86,22 @@ function makeMap(el, opt) {
       st.hl = A.cells || []; grid.redraw()
     },
     routes(plan, hi) { routes.clearLayers(); if (plan) drawRoutes(map, routes, svgR, plan, hi) },
+    zones(Z, labelN) {
+      zoneL.clearLayers(); if (!Z) return;
+      Z.forEach((z, k) => {
+        const tip = `<b>High-risk zone ${z.n}</b><br>${esc(z.name)}<br>${z.cells.length} high-risk cells · ${fmtN(z.area)} km²<br>mean predicted density ${z.meanP.toFixed(4)}`;
+        L.polyline(z.segs, { color: "#7a0f1c", weight: 2.6, opacity: .95 }).bindTooltip(tip, { sticky: true }).addTo(zoneL);
+        if (k < (labelN == null ? 6 : labelN)) L.marker([z.lat, z.lon], { pane: "markPane", icon: L.divIcon({ className: "", html: `<div class="zone-ic">Zone ${z.n} · ${esc(z.name)} · ${fmtN(z.area)} km²</div>`, iconSize: null, iconAnchor: [-6, 10] }) }).bindTooltip(tip).addTo(zoneL)
+      })
+    },
+    fdi(on) {
+      fdiL.clearLayers(); if (!on || !window.AQ_FDI) return 0; let n = 0;
+      AQ_FDI.idx.forEach((i, k) => {
+        const f = AQ_FDI.fdi_mean[k]; if (!(f > 0) || (APP.region !== "ALL" && REG[G.r[i]] !== APP.region)) return; n++;
+        L.circleMarker([G.lat[i], G.lon[i]], { pane: "markPane", radius: 8, color: "#b45309", weight: 3, fillColor: "#fde047", fillOpacity: .85 })
+          .bindTooltip(`<b>Sentinel-2 debris-like signal</b><br>${G.id[i]} · FDI mean ${f.toFixed(5)} (${AQ_FDI.n_tiles[k]} tile${AQ_FDI.n_tiles[k] > 1 ? "s" : ""})<br>LSTM density ${APP.D().P[i].toFixed(4)}`).addTo(fdiL)
+      }); return n
+    },
     destroy() { try { map.stop() } catch (e) { } map.remove() }
   };
   return api
@@ -109,6 +125,7 @@ function drawRoutes(map, grp, svgR, plan, hi) {
       L.polyline(c.pts, { renderer: svgR, color: "#0b2236", weight: ret ? 4 : 6, opacity: .55 * op, interactive: false }).addTo(grp);
       L.polyline(c.pts, { renderer: svgR, color: col, weight: ret ? 2.2 : 3.4, opacity: (ret ? .75 : 1) * op, dashArray: ret ? "7 7" : null }).bindTooltip(`Trip ${tr.name} · leg ${m + 1}${ret ? " (return to port)" : ""} · vessel V${tr.v + 1}`, { sticky: true }).addTo(grp);
       if (!ret && !dim) L.polyline(c.pts, { renderer: svgR, color: "#fff", weight: 2.2, opacity: .9, className: "route-flow", interactive: false }).addTo(grp);
+      if (tripLand(tr).includes(m)) L.marker(c.mid, { pane: "markPane", icon: L.divIcon({ className: "", html: `<div class="land-ic" style="opacity:${op}">⚠</div>`, iconSize: [20, 20], iconAnchor: [10, 22] }) }).bindTooltip(`<b>⚠ Trip ${tr.name}, leg ${m + 1} crosses land</b><br>Distance is a straight great-circle estimate; a real sea route around the land would be longer.`).addTo(grp);
       if (c.len > 18) L.marker(c.mid, { pane: "markPane", interactive: false, icon: L.divIcon({ className: "arrow-ic", html: `<div style="--c:${col};opacity:${op};transform:translate(-7px,-7px) rotate(${c.ang}deg)"></div>`, iconSize: [0, 0] }) }).addTo(grp)
     }
     tr.stops.forEach((s, n) => L.marker([G.lat[s.i], G.lon[s.i]], { pane: "markPane", opacity: op, icon: L.divIcon({ className: "", html: `<div class="stop-ic" style="--c:${col}">${n + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) })
